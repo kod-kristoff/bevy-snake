@@ -12,7 +12,7 @@ fn main() {
         .add_resource(WindowDescriptor {
             title: "Snake".to_string(),
             #[cfg(target_arch = "wasm32")]
-            canvas: Some("#bevy-canvas".to_string())
+            canvas: Some("#bevy-canvas".to_string()),
             width: 500.0,
             height: 500.0,
             ..Default::default()
