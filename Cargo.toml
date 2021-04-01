@@ -1,5 +1,5 @@
 [package]
-name = "bevy-snake"
+name = "bevsnake"
 version = "0.1.0"
 authors = ["Kristoffer Andersson <kod.kristoff@gmail.com>"]
 edition = "2018"
@@ -7,5 +7,12 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bevy = "0.4.0"
 rand = "0.8.3"
+bevy = { version = "0.4", default-features = false, features = ["bevy_winit", "render"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+bevy_webgl2 = "0.4"
+
+[features]
+default = ["bevy/bevy_wgpu"]
+web = []

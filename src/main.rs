@@ -7,13 +7,22 @@ const ARENA_WIDTH: u32 = 20;
 const ARENA_HEIGHT: u32 = 20;
 
 fn main() {
-    App::build()
+    let mut builder = App::build();
+    builder
         .add_resource(WindowDescriptor {
             title: "Snake".to_string(),
+            #[cfg(target_arch = "wasm32")]
+            canvas: Some("#bevy-canvas".to_string())
             width: 500.0,
             height: 500.0,
             ..Default::default()
         })
+        .add_plugins(DefaultPlugins);
+
+    #[cfg(target_arch = "wasm32")]
+    builder.add_plugin(bevy_webgl2::WebGL2Plugin::default());
+
+    builder
         .add_resource(ClearColor(Color::rgb(0.04, 0.04, 0.04)))
         .add_resource(SnakeMoveTimer(Timer::new(
             Duration::from_millis(150. as u64),
@@ -33,7 +42,6 @@ fn main() {
         .add_system(snake_eating.system())
         .add_system(snake_growth.system())
         .add_system(game_over.system())
-        .add_plugins(DefaultPlugins)
         .run();
 }
 
