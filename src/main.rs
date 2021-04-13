@@ -9,7 +9,7 @@ const ARENA_HEIGHT: u32 = 20;
 fn main() {
     let mut builder = App::build();
     builder
-        .add_resource(WindowDescriptor {
+        .insert_resource(WindowDescriptor {
             title: "Snake".to_string(),
             #[cfg(target_arch = "wasm32")]
             canvas: Some("#bevy-canvas".to_string()),
@@ -23,13 +23,13 @@ fn main() {
     builder.add_plugin(bevy_webgl2::WebGL2Plugin::default());
 
     builder
-        .add_resource(ClearColor(Color::rgb(0.04, 0.04, 0.04)))
-        .add_resource(SnakeMoveTimer(Timer::new(
+        .insert_resource(ClearColor(Color::rgb(0.04, 0.04, 0.04)))
+        .insert_resource(SnakeMoveTimer(Timer::new(
             Duration::from_millis(150. as u64),
             true,
         )))
-        .add_resource(SnakeSegments::default())
-        .add_resource(LastTailPosition::default())
+        .insert_resource(SnakeSegments::default())
+        .insert_resource(LastTailPosition::default())
         .add_event::<GrowthEvent>()
         .add_event::<GameOverEvent>()
         .add_startup_system(setup.system())
@@ -41,12 +41,20 @@ fn main() {
         .add_system(snake_timer.system())
         .add_system(snake_eating.system())
         .add_system(snake_growth.system())
-        .add_system(game_over.system())
+        .add_system(game_over.system().after(SnakeMovement::Movement))
         .run();
 }
 
-fn setup(commands: &mut Commands, mut materials: ResMut<Assets<ColorMaterial>>) {
-    commands.spawn(Camera2dBundle::default());
+#[derive(SystemLabel, Debug, Hash, PartialEq, Eq, Clone)]
+pub enum SnakeMovement {
+    Input,
+    Movement,
+    Eating,
+    Growth,
+}
+
+fn setup(mut commands: Commands, mut materials: ResMut<Assets<ColorMaterial>>) {
+    commands.spawn_bundle(OrthographicCameraBundle::new_2d());
     commands.insert_resource(Materials {
         head_material: materials.add(Color::rgb(0.7, 0.7, 0.7).into()),
         segment_material: materials.add(Color::rgb(0.3, 0.3, 0.3).into()),
@@ -55,22 +63,22 @@ fn setup(commands: &mut Commands, mut materials: ResMut<Assets<ColorMaterial>>) 
 }
 
 fn spawn_snake(
-    commands: &mut Commands,
+    mut commands: Commands,
     materials: Res<Materials>,
     mut segments: ResMut<SnakeSegments>,
 ) {
     segments.0 = vec![
         commands
-            .spawn(SpriteBundle {
+            .spawn_bundle(SpriteBundle {
                 material: materials.head_material.clone(),
                 ..Default::default()
             })
-            .with(SnakeHead {
+            .insert(SnakeHead {
                 direction: Direction::Up,
             })
-            .with(SnakeSegment)
-            .with(Position { x: 3, y: 3 })
-            .with(Size::square(0.8))
+            .insert(SnakeSegment)
+            .insert(Position { x: 3, y: 3 })
+            .insert(Size::square(0.8))
             .current_entity()
             .unwrap(),
         spawn_segment(
@@ -82,18 +90,18 @@ fn spawn_snake(
 }
 
 fn spawn_segment(
-    commands: &mut Commands,
+    mut commands: Commands,
     material: &Handle<ColorMaterial>,
     position: Position,
 ) -> Entity {
     commands
-        .spawn(SpriteBundle {
+        .spawn_bundle(SpriteBundle {
             material: material.clone(),
             ..Default::default()
         })
-        .with(SnakeSegment)
-        .with(position)
-        .with(Size::square(0.65))
+        .insert(SnakeSegment)
+        .insert(position)
+        .insert(Size::square(0.65))
         .current_entity()
         .unwrap()
 }
@@ -121,7 +129,7 @@ fn snake_movement(
     snake_timer: ResMut<SnakeMoveTimer>,
     segments: ResMut<SnakeSegments>,
     mut last_tail_position: ResMut<LastTailPosition>,
-    mut game_over_events: ResMut<Events<GameOverEvent>>,
+    mut game_over_writer: EventWriter<GameOverEvent>,
     mut heads: Query<(Entity,  &mut SnakeHead)>,
     mut positions: Query<&mut Position>,
 ) {
@@ -172,7 +180,7 @@ fn snake_movement(
             game_over_events.send(GameOverEvent);
         }
         if segment_positions.contains(&head_pos) {
-            game_over_events.send(GameOverEvent);
+            game_over_writer.send(GameOverEvent);
         }
         segment_positions
             .iter()
@@ -188,7 +196,7 @@ fn snake_timer(time: Res<Time>, mut snake_timer: ResMut<SnakeMoveTimer>) {
 }
 
 fn snake_eating(
-    commands: &mut Commands,
+    mut commands: Commands,
     snake_timer: ResMut<SnakeMoveTimer>,
     mut growth_events: ResMut<Events<GrowthEvent>>,
     food_positions: Query<(Entity, &Position), With<Food>>,
@@ -200,7 +208,7 @@ fn snake_eating(
     for head_pos in head_positions.iter() {
         for (ent, food_pos) in food_positions.iter() {
             if food_pos == head_pos {
-                commands.despawn(ent);
+                commands.d.spawn_bundle(ent);
                 growth_events.send(GrowthEvent);
             }
         }
@@ -208,7 +216,7 @@ fn snake_eating(
 }
 
 fn snake_growth(
-    commands: &mut Commands,
+    mut commands: Commands,
     last_tail_position: Res<LastTailPosition>,
     growth_events: Res<Events<GrowthEvent>>,
     mut segments: ResMut<SnakeSegments>,
@@ -225,17 +233,16 @@ fn snake_growth(
 }
 
 fn game_over(
-    commands: &mut Commands,
-    mut reader: Local<EventReader<GameOverEvent>>,
-    game_over_events: Res<Events<GameOverEvent>>,
+    mut commands: Commands,
+    mut reader: EventReader<GameOverEvent>,
     materials: Res<Materials>,
     segment_res: ResMut<SnakeSegments>,
     food: Query<Entity, With<Food>>,
     segments: Query<Entity, With<SnakeSegment>>,
 ) {
-    if reader.iter(&game_over_events).next().is_some() {
+    if reader.iter().next().is_some() {
         for ent in food.iter().chain(segments.iter()) {
-            commands.despawn(ent);
+            commands.entity(ent).despawn();
         }
         spawn_snake(commands, materials, segment_res);
     }
@@ -297,23 +304,23 @@ impl Default for FoodSpawnTimer {
 }
 
 fn food_spawner(
-    commands: &mut Commands,
+    mut commands: Commands,
     materials: Res<Materials>,
     time: Res<Time>,
     mut timer: Local<FoodSpawnTimer>,
 ) {
-    if timer.0.tick(time.delta_seconds()).finished() {
+    if timer.0.tick(time.delta()).finished() {
         commands
-            .spawn(SpriteBundle {
+            .spawn_bundle(SpriteBundle {
                 material: materials.food_material.clone(),
                 ..Default::default()
             })
-            .with(Food)
-            .with(Position {
+            .insert(Food)
+            .insert(Position {
                 x: (random::<f32>() * ARENA_WIDTH as f32) as i32,
                 y: (random::<f32>() * ARENA_HEIGHT as f32) as i32,
             })
-            .with(Size::square(0.8));
+            .insert(Size::square(0.8));
     }
 }
 
